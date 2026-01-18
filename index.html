@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Certificate Generator (Employment/Resignation)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        @media print {
+            body { background: white; margin: 0; padding: 0; }
+            .no-print { display: none !important; }
+            
+            html, body, .preview-container, .overflow-hidden {
+                height: auto !important;
+                overflow: visible !important;
+                background: none !important;
+            }
+            
+            .preview-container {
+                padding: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
+            }
+
+            .print-area { 
+                margin: 0 !important; 
+                border: none !important; 
+                box-shadow: none !important;
+                width: 210mm;
+                height: 297mm;
+                padding: 20mm !important;
+            }
+            .page-break { page-break-before: always; }
+        }
+
+        /* A4 Preview Styling */
+        .preview-container {
+            background-color: #f3f4f6;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .a4-page {
+            width: 210mm;
+            min-height: 297mm;
+            padding: 20mm;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            font-family: "MS Mincho", "Hiragino Mincho Pro", serif;
+            color: black;
+            line-height: 1.6;
+            position: relative;
+        }
+
+        .cert-title {
+            text-align: center;
+            font-size: 24pt;
+            font-weight: bold;
+            text-decoration: underline;
+            margin-bottom: 3rem;
+            letter-spacing: 0.5em;
+        }
+
+        .field-label {
+            display: inline-block;
+            width: 120px;
+            font-weight: bold;
+        }
+
+        .stamp-area {
+            position: absolute;
+            bottom: 40mm;
+            right: 25mm;
+            text-align: left;
+        }
+        
+        .in-app-label {
+            font-family: sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+<div class="flex flex-col md:flex-row min-h-screen overflow-hidden">
+    <!-- Form Sidebar -->
+    <div class="w-full md:w-1/3 bg-white p-4 md:p-6 overflow-y-auto border-r shadow-lg no-print">
+        <h1 class="text-xl md:text-2xl font-bold mb-4 md:mb-6 text-blue-800">Certificate Maker</h1>
+        
+        <div class="mb-4 md:mb-6">
+            <label class="block text-sm font-bold mb-2">Select Certificate Type:</label>
+            <select id="certType" class="w-full p-2 border rounded" onchange="updatePreview()">
+                <option value="employment">Employment (在職証明書)</option>
+                <option value="resignation">Resignation (退職証明書)</option>
+            </select>
+        </div>
+
+        <div id="formFields" class="space-y-4">
+            <!-- Employee Info -->
+            <div class="border-t pt-4">
+                <h3 class="font-bold text-gray-700 mb-2 text-sm md:text-base">Employee Info</h3>
+                <input type="text" id="empName" placeholder="Full Name (氏名)" class="w-full p-2 border rounded mb-2 text-sm" oninput="updatePreview()">
+                <input type="text" id="empNationality" placeholder="Nationality (国籍) - for Employment only" class="w-full p-2 border rounded mb-2 text-sm" oninput="updatePreview()">
+                <input type="date" id="empDob" class="w-full p-2 border rounded mb-2 text-sm" oninput="updatePreview()">
+                <label class="text-xs text-gray-500 block">Date of Birth</label>
+            </div>
+
+            <div class="border-t pt-4">
+                <h3 class="font-bold text-gray-700 mb-2 text-sm md:text-base">Employment Details</h3>
+                <input type="text" id="empDept" placeholder="Department/Store (所属・店舗)" class="w-full p-2 border rounded mb-2 text-sm" oninput="updatePreview()">
+                <input type="text" id="empTitle" placeholder="Job Title (職種/地位)" class="w-full p-2 border rounded mb-2 text-sm" oninput="updatePreview()">
+                <div class="flex gap-2 flex-col md:flex-row">
+                    <div class="flex-1">
+                        <label class="text-xs">Start Date</label>
+                        <input type="date" id="empStart" class="w-full p-2 border rounded text-sm" oninput="updatePreview()">
+                    </div>
+                    <div id="resignDateContainer" class="hidden flex-1">
+                        <label class="text-xs">Resignation Date</label>
+                        <input type="date" id="empEnd" class="w-full p-2 border rounded text-sm" oninput="updatePreview()">
+                    </div>
+                </div>
+                <div id="salaryContainer">
+                    <input type="text" id="empSalary" placeholder="Salary (給与) e.g. 220,000 円" class="w-full p-2 border rounded mt-2 text-sm" oninput="updatePreview()">
+                </div>
+                <textarea id="empDuties" placeholder="Job Duties (職務の内容)" class="w-full p-2 border rounded mt-2 text-sm resize-none" oninput="updatePreview()" rows="2">インド料理の調理業務</textarea>
+                <input type="text" id="resignReason" placeholder="Reason for Resignation (退職理由)" class="w-full p-2 border rounded mt-2 hidden text-sm" oninput="updatePreview()" value="自己都合退職">
+            </div>
+
+            <!-- Company Info (Defaults Restored) -->
+            <div class="border-t pt-4">
+                <h3 class="font-bold text-gray-700 mb-2 text-sm md:text-base">Company Info</h3>
+                <input type="text" id="companyName" placeholder="Company Name" class="w-full p-2 border rounded mb-2 text-sm" oninput="updatePreview()">
+                <input type="text" id="storeName" placeholder="Store Name" class="w-full p-2 border rounded mb-2 text-sm" oninput="updatePreview()">
+                <input type="text" id="companyAddr" placeholder="Address" class="w-full p-2 border rounded mb-2 text-sm" oninput="updatePreview()">
+                <input type="text" id="companyPhone" placeholder="Phone Number" class="w-full p-2 border rounded mb-2 text-sm" oninput="updatePreview()" value="1234567890">
+                <input type="text" id="repName" placeholder="Representative" class="w-full p-2 border rounded mb-2 text-sm" oninput="updatePreview()">
+                <input type="date" id="issueDate" class="w-full p-2 border rounded text-sm" oninput="updatePreview()">
+                <label class="text-xs text-gray-500 block">Date of Issue</label>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="space-y-2 mt-6">
+            <button onclick="downloadDocument('pdf')" class="w-full bg-blue-600 text-white font-bold py-2 md:py-3 rounded hover:bg-blue-700 transition text-sm md:text-base">
+                📥 Download as PDF
+            </button>
+            <button onclick="downloadDocument('jpg')" class="w-full bg-purple-600 text-white font-bold py-2 md:py-3 rounded hover:bg-purple-700 transition text-sm md:text-base">
+                📥 Download as JPG
+            </button>
+            <button onclick="printDocument()" class="w-full bg-green-600 text-white font-bold py-2 md:py-3 rounded hover:bg-green-700 transition text-sm md:text-base">
+                🖨️ Print
+            </button>
+            <button onclick="copyLinkToClipboard()" class="w-full bg-orange-600 text-white font-bold py-2 md:py-3 rounded hover:bg-orange-700 transition text-sm md:text-base">
+                🔗 Copy Share Link
+            </button>
+        </div>
+    </div>
+
+    <!-- Preview Area -->
+    <div class="w-full md:w-2/3 preview-container overflow-y-auto">
+        <div id="printTarget" class="a4-page print-area">
+            <!-- Content dynamiclly updated by JS -->
+        </div>
+    </div>
+</div>
+
+<script>
+    function formatDateJP(dateStr) {
+        if (!dateStr) return "　　年　月　日";
+        const d = new Date(dateStr);
+        return `${d.getFullYear()}年${String(d.getMonth() + 1).padStart(2, '0')}月${String(d.getDate()).padStart(2, '0')}日`;
+    }
+
+    function getFormData() {
+        return {
+            certType: document.getElementById('certType').value,
+            empName: document.getElementById('empName').value,
+            empNationality: document.getElementById('empNationality').value,
+            empDob: document.getElementById('empDob').value,
+            empDept: document.getElementById('empDept').value,
+            empTitle: document.getElementById('empTitle').value,
+            empStart: document.getElementById('empStart').value,
+            empEnd: document.getElementById('empEnd').value,
+            empSalary: document.getElementById('empSalary').value,
+            empDuties: document.getElementById('empDuties').value,
+            resignReason: document.getElementById('resignReason').value,
+            companyName: document.getElementById('companyName').value,
+            storeName: document.getElementById('storeName').value,
+            companyAddr: document.getElementById('companyAddr').value,
+            companyPhone: document.getElementById('companyPhone').value,
+            repName: document.getElementById('repName').value,
+            issueDate: document.getElementById('issueDate').value
+        };
+    }
+
+    function loadFormData(data) {
+        document.getElementById('certType').value = data.certType || 'employment';
+        document.getElementById('empName').value = data.empName || '';
+        document.getElementById('empNationality').value = data.empNationality || '';
+        document.getElementById('empDob').value = data.empDob || '';
+        document.getElementById('empDept').value = data.empDept || '';
+        document.getElementById('empTitle').value = data.empTitle || '';
+        document.getElementById('empStart').value = data.empStart || '';
+        document.getElementById('empEnd').value = data.empEnd || '';
+        document.getElementById('empSalary').value = data.empSalary || '';
+        document.getElementById('empDuties').value = data.empDuties || '';
+        document.getElementById('resignReason').value = data.resignReason || '自己都合退職';
+        document.getElementById('companyName').value = data.companyName || '';
+        document.getElementById('storeName').value = data.storeName || '';
+        document.getElementById('companyAddr').value = data.companyAddr || '';
+        document.getElementById('companyPhone').value = data.companyPhone || '1234567890';
+        document.getElementById('repName').value = data.repName || '';
+        document.getElementById('issueDate').value = data.issueDate || new Date().toISOString().split('T')[0];
+        updatePreview();
+    }
+
+    function copyLinkToClipboard() {
+        const data = getFormData();
+        const params = new URLSearchParams(data).toString();
+        const url = `${window.location.origin}${window.location.pathname}?${params}`;
+        
+        navigator.clipboard.writeText(url).then(() => {
+            alert('Share link copied to clipboard!');
+        }).catch(err => {
+            console.error('Failed to copy:', err);
+            alert('Failed to copy link');
+        });
+    }
+
+    function downloadDocument(format) {
+        const element = document.getElementById('printTarget');
+        const data = getFormData();
+        const filename = `Certificate_${data.empName || 'Document'}_${new Date().toISOString().split('T')[0]}`;
+        
+        if (format === 'pdf') {
+            // Backup styles
+            const originalShadow = element.style.boxShadow;
+            const originalMargin = element.style.margin;
+            const originalHeight = element.style.height;
+            const originalMinHeight = element.style.minHeight;
+            const originalOverflow = element.style.overflow;
+
+            // Apply temporary styles for clean PDF generation
+            element.style.boxShadow = 'none';
+            element.style.margin = '0';
+            // Restrict height slightly less than A4 (297mm) to prevent extra blank page
+            element.style.height = '296.5mm';
+            element.style.minHeight = '296.5mm';
+            element.style.overflow = 'hidden';
+
+            const opt = {
+                margin: 0,
+                filename: `${filename}.pdf`,
+                image: { type: 'png', quality: 0.98 },
+                html2canvas: { scale: 2, logging: false, scrollY: 0, useCORS: true },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+            
+            html2pdf().set(opt).from(element).save().then(() => {
+                // Restore styles
+                element.style.boxShadow = originalShadow;
+                element.style.margin = originalMargin;
+                element.style.height = originalHeight;
+                element.style.minHeight = originalMinHeight;
+                element.style.overflow = originalOverflow;
+            });
+        } else if (format === 'jpg') {
+            html2canvas(element, { scale: 2, logging: false }).then(canvas => {
+                const link = document.createElement('a');
+                link.href = canvas.toDataURL('image/jpeg', 0.95);
+                link.download = `${filename}.jpg`;
+                link.click();
+            });
+        }
+    }
+
+    function printDocument() {
+        window.print();
+    }
+
+    function updatePreview() {
+        const type = document.getElementById('certType').value;
+        const target = document.getElementById('printTarget');
+        
+        // Form field visibility toggles
+        document.getElementById('resignDateContainer').classList.toggle('hidden', type === 'employment');
+        document.getElementById('resignReason').classList.toggle('hidden', type === 'employment');
+        document.getElementById('salaryContainer').classList.toggle('hidden', type === 'resignation');
+        document.getElementById('empNationality').classList.toggle('hidden', type === 'resignation');
+
+        const data = {
+            name: document.getElementById('empName').value || "　　　　　　　　",
+            nationality: document.getElementById('empNationality').value || "　　　　",
+            dob: formatDateJP(document.getElementById('empDob').value),
+            dept: document.getElementById('empDept').value || "　　　　",
+            title: document.getElementById('empTitle').value || "　　　　",
+            start: formatDateJP(document.getElementById('empStart').value),
+            end: formatDateJP(document.getElementById('empEnd').value),
+            salary: document.getElementById('empSalary').value || "　　　　",
+            duties: document.getElementById('empDuties').value || "　　　　",
+            reason: document.getElementById('resignReason').value || "自己都合退職",
+            comp: document.getElementById('companyName').value || "　　　　　　　　",
+            store: document.getElementById('storeName').value || "　　　　　　　　",
+            addr: document.getElementById('companyAddr').value || "　　　　　　　　",
+            phone: document.getElementById('companyPhone').value || "　　　　　　　　",
+            rep: document.getElementById('repName').value || "　　　　　　　　",
+            today: formatDateJP(document.getElementById('issueDate').value || new Date().toISOString().split('T')[0])
+        };
+
+        if (type === 'employment') {
+            target.innerHTML = `
+                <div class="cert-title">在職証明書</div>
+                <div class="mt-12 space-y-4 text-lg">
+                    <p><span class="field-label">国　　籍</span>${data.nationality}</p>
+                    <p><span class="field-label">氏　　名</span>${data.name}</p>
+                    <p><span class="field-label">生年月日</span>${data.dob}</p>
+                </div>
+
+                <div class="mt-16 text-center text-lg">
+                    上記の者は、下記の通り当社に在職していることを証明いたします。
+                </div>
+
+                <div class="mt-12 ml-12 text-lg">
+                    <div class="text-center font-bold mb-4">記</div>
+                    <div class="space-y-4">
+                        <p>1. 所属・部署：　${data.dept}</p>
+                        <p>2. 入社年月日：　${data.start}</p>
+                        <p>3. 地位・給与：　${data.title}・月給 ${data.salary}円</p>
+                        <p>4. 職務の内容：　${data.duties}</p>
+                    </div>
+                </div>
+
+                <div class="mt-20 text-right text-lg">
+                    ${data.today}
+                </div>
+
+                <div class="stamp-area text-lg">
+                    <p>会社名　　：　${data.comp}</p>
+                    <p>店舗名　　：　${data.store}</p>
+                    <p>会社所在地：　${data.addr}</p>
+                    <p>職氏名　　：　${data.rep}　　　印</p>
+                </div>
+            `;
+        } else {
+            target.innerHTML = `
+                <div class="cert-title" style="font-size: 20pt; letter-spacing: 0.1em;">退職証明書 / Resignation Certificate</div>
+                
+                <div class="mt-8 text-center text-lg">
+                    下記の者は、当社${data.comp}を退職したことを証明いたします。<br>
+                    <span class="text-sm">This is to certify that the following person has resigned from our company.</span>
+                </div>
+
+                <div class="mt-12 space-y-6 text-lg border-y py-8">
+                    <p><span class="inline-block w-64 font-bold">氏名/Full Name:</span> ${data.name}</p>
+                    <p><span class="inline-block w-64 font-bold">生年月日/Date of Birth:</span> ${data.dob}</p>
+                    <p><span class="inline-block w-64 font-bold">職種/Job Title:</span> ${data.title}</p>
+                    <p><span class="inline-block w-64 font-bold">雇用開始日/Employment Date:</span> ${data.start}</p>
+                    <p><span class="inline-block w-64 font-bold">退職日/Date of Resignation:</span> ${data.end}</p>
+                    <p><span class="inline-block w-64 font-bold">退職理由/Reason:</span> ${data.reason}</p>
+                </div>
+
+                <div class="mt-8 text-sm italic">
+                    以上、上記について何かご不明な点がありましたら、弊社（${data.phone}）にお問い合わせください。<br>
+                    Should any further information be required, I can be reached at ${data.phone}.
+                </div>
+
+                <div class="mt-12 text-left">
+                    ${data.today}
+                </div>
+
+                <div class="stamp-area text-lg" style="bottom: 30mm">
+                    <p>会社名　　：　${data.comp}</p>
+                    <p>店舗名　　：　${data.store}</p>
+                    <p>会社所在地：　${data.addr}</p>
+                    <p>職氏名　　：　${data.rep}　　　印</p>
+                </div>
+            `;
+        }
+    }
+
+    // Load data from URL query parameters
+    function loadFromURL() {
+        const params = new URLSearchParams(window.location.search);
+        const data = {};
+        for (const [key, value] of params) {
+            data[key] = decodeURIComponent(value);
+        }
+        if (Object.keys(data).length > 0) {
+            loadFormData(data);
+        }
+    }
+
+    // Set default date to today
+    window.addEventListener('load', () => {
+        document.getElementById('issueDate').value = new Date().toISOString().split('T')[0];
+        loadFromURL();
+        updatePreview();
+    });
+</script>
+
+</body>
+</html>
